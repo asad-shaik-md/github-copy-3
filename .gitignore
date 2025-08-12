@@ -5,6 +5,7 @@ __pycache__/
 
 # Virtual environment
 attendance_env/
+attendance_env_intel/
 venv/
 env/
 
