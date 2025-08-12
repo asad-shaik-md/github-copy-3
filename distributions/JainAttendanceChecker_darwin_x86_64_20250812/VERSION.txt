@@ -1,0 +1,25 @@
+Jain University Attendance Checker - Intel macOS Build
+======================================================
+
+Build Information:
+- Version: 1.0.0
+- Build Date: Tue Aug 12 09:48:22 IST 2025
+- Platform: macOS (Intel x86_64)
+- Architecture: x86_64
+- Compatibility: Intel Macs, Apple Silicon Macs (via Rosetta)
+- Build Method: Cross-compilation using Rosetta 2
+
+Package Contents:
+- JainAttendanceChecker (Intel executable)
+- README.md (user guide)
+- REQUIREMENTS.md (system requirements)
+- BUILD_EXECUTABLE.md (build instructions)
+- MULTI_PLATFORM_BUILD.md (platform guide)
+- run.sh (launcher script)
+- VERSION.txt (this file)
+
+Compatibility:
+✅ Intel Macs (native)
+✅ Apple Silicon Macs (via Rosetta 2)
+❌ Windows
+❌ Linux

@@ -1,0 +1,29 @@
+Jain University Attendance Checker
+==================================
+
+Build Information:
+- Version: 1.0.0
+- Build Date: Tue Aug 12 09:39:38 IST 2025
+- Platform: darwin
+- Architecture: arm64
+- Python Version: Python 3.12.4
+- Package Type: Standalone Executable
+
+Package Contents:
+- JainAttendanceChecker (executable)
+- README.md (user guide)
+- REQUIREMENTS.md (system requirements)
+- BUILD_EXECUTABLE.md (build instructions)
+- run.sh (Linux/macOS launcher)
+- run.bat (Windows launcher)
+- VERSION.txt (this file)
+
+Installation:
+1. Extract this package to any folder
+2. Install Chrome browser if not already installed
+3. Run the executable or use the launcher scripts
+
+Support:
+- Ensure Chrome browser is installed
+- Check REQUIREMENTS.md for system requirements
+- Run from terminal for detailed error messages

@@ -1,0 +1,337 @@
+name: Build Multi-Platform Executables
+
+on:
+  push:
+    tags:
+      - 'v*'  # Triggers on version tags like v1.0.0
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            arch: amd64
+            extension: .exe
+          - os: ubuntu-latest
+            platform: linux
+            arch: x86_64
+            extension: ''
+          - os: macos-latest
+            platform: darwin
+            arch: x86_64
+            extension: ''
+          - os: macos-14  # Apple Silicon runner
+            platform: darwin
+            arch: arm64
+            extension: ''
+
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install system dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y wget gnupg
+        # Install Chrome
+        wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
+        sudo apt-get update
+        sudo apt-get install -y google-chrome-stable
+
+    - name: Install Chrome (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        # Chrome is pre-installed on GitHub Windows runners
+        # Verify installation
+        & "C:\Program Files\Google\Chrome\Application\chrome.exe" --version
+
+    - name: Install Chrome (macOS)
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        # Chrome is pre-installed on GitHub macOS runners
+        # Verify installation
+        /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --version
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install pyinstaller
+
+    - name: Build executable (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        pyinstaller attendance_checker.spec --clean --distpath dist-windows
+        
+    - name: Build executable (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        pyinstaller attendance_checker.spec --clean --distpath dist-linux
+
+    - name: Build executable (macOS Intel)
+      if: matrix.os == 'macos-latest'
+      run: |
+        pyinstaller attendance_checker.spec --clean --distpath dist-macos-intel
+
+    - name: Build executable (macOS Apple Silicon)
+      if: matrix.os == 'macos-14'
+      run: |
+        pyinstaller attendance_checker.spec --clean --distpath dist-macos-arm
+
+    - name: Create distribution package (Windows)
+      if: matrix.os == 'windows-latest'
+      run: |
+        $date = Get-Date -Format "yyyyMMdd"
+        $packageName = "JainAttendanceChecker_windows_amd64_$date"
+        $distDir = "distributions\$packageName"
+        
+        New-Item -ItemType Directory -Force -Path $distDir
+        
+        # Copy executable
+        Copy-Item "dist-windows\JainAttendanceChecker.exe" "$distDir\"
+        
+        # Copy documentation
+        Copy-Item "README_DISTRIBUTION.md" "$distDir\README.md"
+        Copy-Item "REQUIREMENTS.md" "$distDir\"
+        Copy-Item "BUILD_EXECUTABLE.md" "$distDir\"
+        Copy-Item "WINDOWS_BUILD_OPTIONS.md" "$distDir\"
+        
+        # Create Windows-specific files
+        @"
+@echo off
+echo Starting Jain University Attendance Checker...
+echo ==============================================
+
+REM Check if Chrome is installed
+where chrome >nul 2>nul
+if %errorlevel% neq 0 (
+    echo Warning: Chrome browser may not be installed!
+    echo Please install Chrome from: https://www.google.com/chrome/
+    echo Press any key to continue anyway...
+    pause
+)
+
+REM Run the application
+JainAttendanceChecker.exe
+
+echo Program finished. Press any key to close...
+pause
+"@ | Out-File -FilePath "$distDir\run.bat" -Encoding ascii
+        
+        # Create version info
+        @"
+Jain University Attendance Checker - Windows Build
+==================================================
+
+Build Information:
+- Version: 1.0.0
+- Build Date: $(Get-Date)
+- Platform: Windows (amd64)
+- Architecture: x86_64
+- Build Environment: GitHub Actions
+
+Compatibility:
+✅ Windows 10 (64-bit)
+✅ Windows 11 (64-bit)
+❌ Windows 7/8 (not supported)
+❌ 32-bit Windows (not supported)
+"@ | Out-File -FilePath "$distDir\VERSION.txt" -Encoding utf8
+        
+        # Create zip
+        Compress-Archive -Path "$distDir\*" -DestinationPath "distributions\$packageName.zip"
+        
+        echo "PACKAGE_NAME=$packageName" >> $env:GITHUB_ENV
+
+    - name: Create distribution package (Linux)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        DATE=$(date +"%Y%m%d")
+        PACKAGE_NAME="JainAttendanceChecker_linux_x86_64_${DATE}"
+        DIST_DIR="distributions/${PACKAGE_NAME}"
+        
+        mkdir -p "${DIST_DIR}"
+        
+        # Copy executable
+        cp "dist-linux/JainAttendanceChecker" "${DIST_DIR}/"
+        chmod +x "${DIST_DIR}/JainAttendanceChecker"
+        
+        # Copy documentation
+        cp "README_DISTRIBUTION.md" "${DIST_DIR}/README.md"
+        cp "REQUIREMENTS.md" "${DIST_DIR}/"
+        cp "BUILD_EXECUTABLE.md" "${DIST_DIR}/"
+        cp "WINDOWS_BUILD_OPTIONS.md" "${DIST_DIR}/"
+        
+        # Create Linux-specific run script
+        cat > "${DIST_DIR}/run.sh" << 'EOF'
+#!/bin/bash
+echo "Starting Jain University Attendance Checker (Linux)..."
+echo "====================================================="
+
+# Check if Chrome is installed
+if ! command -v google-chrome &> /dev/null && ! command -v chrome &> /dev/null && ! command -v chromium &> /dev/null; then
+    echo "⚠️  Chrome browser not found!"
+    echo "Install Chrome: sudo apt install google-chrome-stable"
+    echo "Press Enter to continue anyway..."
+    read
+fi
+
+# Make executable if needed
+chmod +x ./JainAttendanceChecker
+
+# Run the application
+./JainAttendanceChecker
+
+echo "Program finished. Press Enter to close..."
+read
+EOF
+        chmod +x "${DIST_DIR}/run.sh"
+        
+        # Create version info
+        cat > "${DIST_DIR}/VERSION.txt" << EOF
+Jain University Attendance Checker - Linux Build
+================================================
+
+Build Information:
+- Version: 1.0.0
+- Build Date: $(date)
+- Platform: Linux (x86_64)
+- Architecture: x86_64
+- Build Environment: GitHub Actions
+
+Compatibility:
+✅ Ubuntu 20.04+ (64-bit)
+✅ Most modern Linux distributions
+❌ Very old distributions (GLIBC compatibility)
+❌ 32-bit systems
+EOF
+        
+        # Create zip
+        cd distributions
+        zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}/"
+        cd ..
+        
+        echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+
+    - name: Create distribution package (macOS)
+      if: startsWith(matrix.os, 'macos')
+      run: |
+        DATE=$(date +"%Y%m%d")
+        if [ "${{ matrix.arch }}" = "arm64" ]; then
+          PACKAGE_NAME="JainAttendanceChecker_darwin_arm64_${DATE}"
+          DIST_PATH="dist-macos-arm"
+        else
+          PACKAGE_NAME="JainAttendanceChecker_darwin_x86_64_${DATE}"
+          DIST_PATH="dist-macos-intel"
+        fi
+        
+        DIST_DIR="distributions/${PACKAGE_NAME}"
+        mkdir -p "${DIST_DIR}"
+        
+        # Copy executable
+        cp "${DIST_PATH}/JainAttendanceChecker" "${DIST_DIR}/"
+        chmod +x "${DIST_DIR}/JainAttendanceChecker"
+        
+        # Copy documentation
+        cp "README_DISTRIBUTION.md" "${DIST_DIR}/README.md"
+        cp "REQUIREMENTS.md" "${DIST_DIR}/"
+        cp "BUILD_EXECUTABLE.md" "${DIST_DIR}/"
+        cp "WINDOWS_BUILD_OPTIONS.md" "${DIST_DIR}/"
+        
+        # Create macOS-specific run script
+        cat > "${DIST_DIR}/run.sh" << 'EOF'
+#!/bin/bash
+echo "Starting Jain University Attendance Checker (macOS)..."
+echo "===================================================="
+
+# Make executable if needed
+chmod +x ./JainAttendanceChecker
+
+# Run the application
+./JainAttendanceChecker
+
+echo "Program finished. Press Enter to close..."
+read
+EOF
+        chmod +x "${DIST_DIR}/run.sh"
+        
+        # Create version info
+        cat > "${DIST_DIR}/VERSION.txt" << EOF
+Jain University Attendance Checker - macOS Build
+================================================
+
+Build Information:
+- Version: 1.0.0
+- Build Date: $(date)
+- Platform: macOS (${{ matrix.arch }})
+- Architecture: ${{ matrix.arch }}
+- Build Environment: GitHub Actions
+
+Compatibility:
+$(if [ "${{ matrix.arch }}" = "arm64" ]; then
+echo "✅ Apple Silicon Macs (M1/M2/M3) - native"
+echo "❌ Intel Macs (use x86_64 version)"
+else
+echo "✅ Intel Macs - native"
+echo "✅ Apple Silicon Macs (via Rosetta 2)"
+fi)
+EOF
+        
+        # Create zip
+        cd distributions
+        zip -r "${PACKAGE_NAME}.zip" "${PACKAGE_NAME}/"
+        cd ..
+        
+        echo "PACKAGE_NAME=${PACKAGE_NAME}" >> $GITHUB_ENV
+
+    - name: Upload distribution artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ env.PACKAGE_NAME }}
+        path: distributions/${{ env.PACKAGE_NAME }}.zip
+        retention-days: 90
+
+    - name: Upload to release (if tag)
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v1
+      with:
+        files: distributions/${{ env.PACKAGE_NAME }}.zip
+        body: |
+          ## 🎉 Jain University Attendance Checker Release
+          
+          ### 📦 Available Downloads:
+          - **Windows**: `JainAttendanceChecker_windows_amd64_*.zip`
+          - **macOS (Intel)**: `JainAttendanceChecker_darwin_x86_64_*.zip`
+          - **macOS (Apple Silicon)**: `JainAttendanceChecker_darwin_arm64_*.zip`
+          - **Linux**: `JainAttendanceChecker_linux_x86_64_*.zip`
+          
+          ### 🚀 Quick Start:
+          1. Download the appropriate file for your platform
+          2. Extract the zip file
+          3. Install Chrome browser (if not already installed)
+          4. Run the executable or launcher script
+          
+          ### 💡 Platform Guide:
+          - **Windows users**: Download the `windows_amd64` version
+          - **Mac users**: Download `darwin_x86_64` (works on all Macs) or `darwin_arm64` (M1/M2/M3 only)
+          - **Linux users**: Download the `linux_x86_64` version
+          
+          ### ✅ Requirements:
+          - Google Chrome browser
+          - Internet connection
+          - No Python installation needed
+          
+          **Note**: This application helps automate attendance checking for Jain University students.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
